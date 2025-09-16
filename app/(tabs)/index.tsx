@@ -1,98 +1,332 @@
 import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, StyleSheet, TouchableOpacity, Alert, View, Text, ScrollView, Dimensions, ActivityIndicator } from 'react-native';
+import { useEffect, useState } from 'react';
+import { router } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 
 import { HelloWave } from '@/components/hello-wave';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Link } from 'expo-router';
+import { useAuth } from '../../contexts/AuthContext';
+
+const { width } = Dimensions.get('window');
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const { isAuthenticated, user, logout, isLoading } = useAuth();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.replace('/login');
+    }
+  }, [isAuthenticated, isLoading]);
+
+  const handleLogout = async () => {
+    try {
+      console.log('🚪 Ejecutando logout...');
+      await logout();
+    } catch (error) {
+      console.error('Error en logout:', error);
+    }
+  };
+
+  if (isLoading || !isAuthenticated) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Ionicons name="medical" size={60} color="#10b981" />
+        <Text style={styles.loadingText}>Cargando...</Text>
+      </View>
+    );
+  }
+
+  const getInitials = (firstName: string, lastName: string) => {
+    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+  };
+
+  const getCurrentTime = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Buenos días';
+    if (hour < 18) return 'Buenas tardes';
+    return 'Buenas noches';
+  };
+
+  return (
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <View style={styles.userInfo}>
+            <View style={styles.avatarContainer}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {getInitials(user?.firstName || '', user?.lastName || '')}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.greetingContainer}>
+              <Text style={styles.greeting}>{getCurrentTime()}</Text>
+              <Text style={styles.userName}>{user?.firstName} {user?.lastName}</Text>
+              <Text style={styles.userEmail}>{user?.email}</Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            onPress={handleLogout}
+            style={[styles.logoutIcon, isLoggingOut && styles.logoutIconDisabled]}
+            disabled={isLoggingOut}
+          >
+            {isLoggingOut ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="log-out-outline" size={24} color="#10b981" />
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Tarjetas de información */}
+      <View style={styles.content}>
+        <View style={styles.cardGrid}>
+          {/* Tarjeta de perfil */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="person-outline" size={24} color="#10b981" />
+              <Text style={styles.cardTitle}>Mi Perfil</Text>
+            </View>
+            <View style={styles.cardContent}>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Nombre completo:</Text>
+                <Text style={styles.infoValue}>{user?.firstName} {user?.lastName}</Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Correo electrónico:</Text>
+                <Text style={styles.infoValue}>{user?.email}</Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>ID de usuario:</Text>
+                <Text style={styles.infoValue}>#{user?.id}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Tarjeta de estado */}
+          <View style={styles.statusCard}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="checkmark-circle-outline" size={24} color="#fff" />
+              <Text style={[styles.cardTitle, { color: '#fff' }]}>Estado</Text>
+            </View>
+            <View style={styles.cardContent}>
+              <Text style={styles.statusText}>Sesión Activa</Text>
+              <Text style={styles.statusSubtext}>
+                Conectado desde {new Date().toLocaleDateString()}
+              </Text>
+            </View>
+          </View>
+
+          {/* Tarjeta de acciones */}
+          <View style={styles.actionCard}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="settings-outline" size={24} color="#10b981" />
+              <Text style={styles.cardTitle}>Acciones</Text>
+            </View>
+            <View style={styles.cardContent}>
+              <TouchableOpacity style={styles.actionButton}>
+                <Ionicons name="refresh-outline" size={20} color="#10b981" />
+                <Text style={styles.actionButtonText}>Actualizar datos</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* Botón de cerrar sesión */}
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleLogout}
+        >
+          <Ionicons name="log-out-outline" size={20} color="#fff" />
+          <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+  },
+  loadingText: {
+    color: '#000000',
+    fontSize: 18,
+    marginTop: 20,
+    fontWeight: '600',
+  },
+  header: {
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingBottom: 30,
+    paddingHorizontal: 20,
+    backgroundColor: '#10b981',
+    borderBottomWidth: 2,
+    borderBottomColor: '#000000',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+  },
+  avatarContainer: {
+    marginRight: 15,
+  },
+  avatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 2,
+    borderColor: '#000000',
+  },
+  avatarText: {
+    color: '#10b981',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  greetingContainer: {
+    flex: 1,
+  },
+  greeting: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  userName: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginTop: 2,
+  },
+  userEmail: {
+    color: '#ffffff',
+    fontSize: 14,
+    marginTop: 2,
+    opacity: 0.8,
+  },
+  logoutIcon: {
+    padding: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#000000',
+  },
+  content: {
+    padding: 20,
+    marginTop: -20,
+  },
+  cardGrid: {
+    gap: 16,
+  },
+  card: {
+    borderRadius: 16,
+    padding: 20,
+    backgroundColor: '#ffffff',
+    borderWidth: 2,
+    borderColor: '#000000',
+  },
+  statusCard: {
+    borderRadius: 16,
+    padding: 20,
+    backgroundColor: '#10b981',
+    borderWidth: 2,
+    borderColor: '#000000',
+  },
+  actionCard: {
+    borderRadius: 16,
+    padding: 20,
+    backgroundColor: '#ffffff',
+    borderWidth: 2,
+    borderColor: '#000000',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginLeft: 10,
+    color: '#374151',
+  },
+  cardContent: {
     gap: 8,
   },
-  stepContainer: {
-    gap: 8,
+  infoRow: {
     marginBottom: 8,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  infoLabel: {
+    fontSize: 14,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  infoValue: {
+    fontSize: 16,
+    color: '#374151',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  statusText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  statusSubtext: {
+    color: '#d1fae5',
+    fontSize: 14,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#000000',
+    padding: 10,
+    borderRadius: 8,
+  },
+  actionButtonText: {
+    color: '#000000',
+    marginLeft: 8,
+    fontWeight: '600',
+  },
+  logoutButton: {
+    marginTop: 30,
+    borderRadius: 16,
+    backgroundColor: '#ef4444',
+    borderWidth: 2,
+    borderColor: '#000000',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  logoutButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });

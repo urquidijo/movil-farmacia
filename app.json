@@ -43,6 +43,19 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "updates": {
+      "enabled": false,
+      "checkAutomatically": "OFF",
+      "fallbackToCacheTimeout": 0
+    },
+    "extra": {
+      "eas": {
+        "projectId": "movil-farmacia-local"
+      }
+    },
+    "developer": {
+      "tool": "expo-cli"
     }
   }
 }
