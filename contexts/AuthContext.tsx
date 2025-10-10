@@ -83,7 +83,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Intentar hacer logout en el servidor
       console.log('📡 Enviando logout al servidor...');
       await authAPI.logout();
-      console.log('✅ Logout del servidor exitoso');
+      console.log(' Logout del servidor exitoso');
 
       // Limpiar datos locales después del logout exitoso
       console.log('🧹 Limpiando storage local...');
@@ -96,15 +96,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('Usuario después de limpiar:', userAfterClear);
 
       setUser(null);
-      console.log('✅ Logout completado, usuario eliminado del estado');
+      console.log(' Logout completado, usuario eliminado del estado');
 
     } catch (error) {
       // Incluso si falla la request, limpiamos localmente
-      console.error('❌ Error during logout:', error);
-      console.log('🧹 Forzando limpieza local...');
+      console.error(' Error during logout:', error);
+      console.log(' Forzando limpieza local...');
       await storage.clearAll();
       setUser(null);
-      console.log('✅ Limpieza forzada completada');
+      console.log('Limpieza forzada completada');
     } finally {
       setIsLoading(false);
     }

@@ -19,7 +19,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.josuecova.movilfarmacia"
     },
     "web": {
       "output": "static",
@@ -51,7 +52,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "movil-farmacia-local"
+        "projectId": "934098c7-7817-43ed-866a-ccd6f06cebcf"
       }
     },
     "developer": {

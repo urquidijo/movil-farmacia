@@ -1,39 +1,104 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet, TouchableOpacity, Alert, View, Text, ScrollView, Dimensions, ActivityIndicator } from 'react-native';
+import { Platform, StyleSheet, TouchableOpacity, Alert, View, Text, ScrollView, Dimensions, ActivityIndicator, TextInput, FlatList, RefreshControl } from 'react-native';
 import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
+import { productosAPI, categoriasAPI, carritoAPI, Producto, Categoria } from '../../services/api';
 
 const { width } = Dimensions.get('window');
 
 export default function HomeScreen() {
-  const { isAuthenticated, user, logout, isLoading } = useAuth();
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const { isAuthenticated, user, logout, isLoading: authLoading } = useAuth();
+  const [productos, setProductos] = useState<Producto[]>([]);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [addingToCart, setAddingToCart] = useState<number | null>(null);
+
+  // Ya no redirigimos automáticamente al login, permitimos ver productos
+  // useEffect(() => {
+  //   if (!authLoading && !isAuthenticated) {
+  //     router.replace('/login');
+  //   }
+  // }, [isAuthenticated, authLoading]);
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.replace('/login');
+    // Cargar datos siempre, incluso sin autenticación
+    loadData();
+  }, [selectedCategory, searchQuery]);
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      const [productosData, categoriasData] = await Promise.all([
+        productosAPI.getAll({
+          categoria: selectedCategory || undefined,
+          q: searchQuery || undefined,
+          limit: 20,
+        }),
+        categoriasAPI.getAll(),
+      ]);
+      setProductos(productosData);
+      setCategorias(categoriasData);
+    } catch (error) {
+      console.error('Error loading data:', error);
+      Alert.alert('Error', 'No se pudieron cargar los productos');
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
     }
-  }, [isAuthenticated, isLoading]);
+  };
+
+  const onRefresh = () => {
+    setIsRefreshing(true);
+    loadData();
+  };
+
+  const handleAddToCart = async (productoId: number) => {
+    // Si no está autenticado, pedir que inicie sesión
+    if (!isAuthenticated) {
+      Alert.alert(
+        'Inicia sesión',
+        'Para agregar productos al carrito necesitas iniciar sesión o crear una cuenta',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Registrarme', onPress: () => router.push('/register') },
+          { text: 'Iniciar sesión', onPress: () => router.push('/login') },
+        ]
+      );
+      return;
+    }
+
+    setAddingToCart(productoId);
+    try {
+      await carritoAPI.add(productoId, 1);
+      Alert.alert('¡Agregado!', 'Producto agregado al carrito', [{ text: 'OK' }]);
+    } catch (error: any) {
+      console.error('Error adding to cart:', error);
+      if (error.response?.status === 401) {
+        Alert.alert('Sesión expirada', 'Por favor, inicia sesión nuevamente');
+        await logout();
+      } else {
+        Alert.alert('Error', 'No se pudo agregar al carrito');
+      }
+    } finally {
+      setAddingToCart(null);
+    }
+  };
 
   const handleLogout = async () => {
     try {
-      console.log('🚪 Ejecutando logout...');
       await logout();
     } catch (error) {
       console.error('Error en logout:', error);
     }
   };
 
-  if (isLoading || !isAuthenticated) {
+  if (authLoading) {
     return (
       <View style={styles.loadingContainer}>
         <Ionicons name="medical" size={60} color="#10b981" />
@@ -42,121 +107,150 @@ export default function HomeScreen() {
     );
   }
 
-  const getInitials = (firstName: string, lastName: string) => {
-    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
-  };
-
-  const getCurrentTime = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Buenos días';
-    if (hour < 18) return 'Buenas tardes';
-    return 'Buenas noches';
-  };
-
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.userInfo}>
-            <View style={styles.avatarContainer}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {getInitials(user?.firstName || '', user?.lastName || '')}
-                </Text>
-              </View>
-            </View>
+            <Ionicons name="medical" size={32} color="#fff" />
             <View style={styles.greetingContainer}>
-              <Text style={styles.greeting}>{getCurrentTime()}</Text>
-              <Text style={styles.userName}>{user?.firstName} {user?.lastName}</Text>
-              <Text style={styles.userEmail}>{user?.email}</Text>
+              <Text style={styles.appTitle}>Farmacia App</Text>
+              {isAuthenticated ? (
+                <Text style={styles.userName}>Hola, {user?.firstName} 👋</Text>
+              ) : (
+                <Text style={styles.userName}>Modo invitado</Text>
+              )}
             </View>
           </View>
-          <TouchableOpacity
-            onPress={handleLogout}
-            style={[styles.logoutIcon, isLoggingOut && styles.logoutIconDisabled]}
-            disabled={isLoggingOut}
-          >
-            {isLoggingOut ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
+          {isAuthenticated ? (
+            <TouchableOpacity onPress={handleLogout} style={styles.logoutIcon}>
               <Ionicons name="log-out-outline" size={24} color="#10b981" />
-            )}
-          </TouchableOpacity>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={() => router.push('/login')} style={styles.loginIcon}>
+              <Ionicons name="log-in-outline" size={24} color="#10b981" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Barra de búsqueda */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search-outline" size={20} color="#6b7280" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Buscar productos..."
+            placeholderTextColor="#9ca3af"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery !== '' && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+              <Ionicons name="close-circle" size={20} color="#6b7280" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
-      {/* Tarjetas de información */}
-      <View style={styles.content}>
-        <View style={styles.cardGrid}>
-          {/* Tarjeta de perfil */}
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="person-outline" size={24} color="#10b981" />
-              <Text style={styles.cardTitle}>Mi Perfil</Text>
-            </View>
-            <View style={styles.cardContent}>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Nombre completo:</Text>
-                <Text style={styles.infoValue}>{user?.firstName} {user?.lastName}</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Correo electrónico:</Text>
-                <Text style={styles.infoValue}>{user?.email}</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>ID de usuario:</Text>
-                <Text style={styles.infoValue}>#{user?.id}</Text>
-              </View>
-            </View>
-          </View>
+      {/* Mensaje de bienvenida */}
+      <View style={styles.welcomeContainer}>
+        <Text style={styles.welcomeTitle}>Encuentra todo para tu salud 🏥</Text>
+        <Text style={styles.welcomeSubtitle}>Medicamentos, dermocosméticos y más</Text>
+      </View>
 
-          {/* Tarjeta de estado */}
-          <View style={styles.statusCard}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="checkmark-circle-outline" size={24} color="#fff" />
-              <Text style={[styles.cardTitle, { color: '#fff' }]}>Estado</Text>
-            </View>
-            <View style={styles.cardContent}>
-              <Text style={styles.statusText}>Sesión Activa</Text>
-              <Text style={styles.statusSubtext}>
-                Conectado desde {new Date().toLocaleDateString()}
+      {/* Categorías */}
+      <View style={styles.categoriesWrapper}>
+        <Text style={styles.categoriesLabel}>Categorías</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesContent}>
+          <TouchableOpacity
+            style={[styles.categoryChip, selectedCategory === '' && styles.categoryChipActive]}
+            onPress={() => setSelectedCategory('')}
+          >
+            <Text style={[styles.categoryChipText, selectedCategory === '' && styles.categoryChipTextActive]} numberOfLines={1}>
+              Todos
+            </Text>
+          </TouchableOpacity>
+          {categorias.map((categoria) => (
+            <TouchableOpacity
+              key={categoria.id}
+              style={[styles.categoryChip, selectedCategory === categoria.nombre && styles.categoryChipActive]}
+              onPress={() => setSelectedCategory(categoria.nombre)}
+            >
+              <Text style={[styles.categoryChipText, selectedCategory === categoria.nombre && styles.categoryChipTextActive]} numberOfLines={1}>
+                {categoria.nombre}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Lista de productos */}
+      {isLoading && !isRefreshing ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#10b981" />
+          <Text style={styles.loadingText}>Cargando productos...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={productos}
+          keyExtractor={(item) => item.id.toString()}
+          numColumns={2}
+          columnWrapperStyle={styles.productRow}
+          contentContainerStyle={styles.productList}
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} colors={['#10b981']} />}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="basket-outline" size={60} color="#9ca3af" />
+              <Text style={styles.emptyText}>
+                {selectedCategory ? `No hay productos en "${selectedCategory}"` : 'No hay productos disponibles'}
               </Text>
             </View>
-          </View>
-
-          {/* Tarjeta de acciones */}
-          <View style={styles.actionCard}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="settings-outline" size={24} color="#10b981" />
-              <Text style={styles.cardTitle}>Acciones</Text>
+          }
+          renderItem={({ item }) => (
+            <View style={styles.productCard}>
+              <View style={styles.productImageContainer}>
+                {item.imageUrl ? (
+                  <Image source={{ uri: item.imageUrl }} style={styles.productImage} contentFit="cover" />
+                ) : (
+                  <View style={styles.productImagePlaceholder}>
+                    <Ionicons name="image-outline" size={40} color="#9ca3af" />
+                  </View>
+                )}
+              </View>
+              <View style={styles.productInfo}>
+                <Text style={styles.productBrand} numberOfLines={1}>{item.marca.nombre}</Text>
+                <Text style={styles.productName} numberOfLines={2}>{item.nombre}</Text>
+                {item.descripcion && (
+                  <Text style={styles.productDescription} numberOfLines={2}>{item.descripcion}</Text>
+                )}
+                <Text style={styles.productPrice}>Bs. {item.precio.toFixed(2)}</Text>
+                <TouchableOpacity
+                  style={[styles.addButton, addingToCart === item.id && styles.addButtonDisabled]}
+                  onPress={() => handleAddToCart(item.id)}
+                  disabled={addingToCart === item.id}
+                >
+                  {addingToCart === item.id ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="cart-outline" size={18} color="#fff" />
+                      <Text style={styles.addButtonText}>Agregar</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-            <View style={styles.cardContent}>
-              <TouchableOpacity style={styles.actionButton}>
-                <Ionicons name="refresh-outline" size={20} color="#10b981" />
-                <Text style={styles.actionButtonText}>Actualizar datos</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
-        {/* Botón de cerrar sesión */}
-        <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={handleLogout}
-        >
-          <Ionicons name="log-out-outline" size={20} color="#fff" />
-          <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+          )}
+        />
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#f9fafb',
   },
   loadingContainer: {
     flex: 1,
@@ -165,14 +259,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
   },
   loadingText: {
-    color: '#000000',
-    fontSize: 18,
-    marginTop: 20,
+    color: '#374151',
+    fontSize: 16,
+    marginTop: 16,
     fontWeight: '600',
   },
   header: {
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 30,
+    paddingBottom: 16,
     paddingHorizontal: 20,
     backgroundColor: '#10b981',
     borderBottomWidth: 2,
@@ -181,50 +275,26 @@ const styles = StyleSheet.create({
   headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
-  avatarContainer: {
-    marginRight: 15,
-  },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderWidth: 2,
-    borderColor: '#000000',
-  },
-  avatarText: {
-    color: '#10b981',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
   greetingContainer: {
-    flex: 1,
+    marginLeft: 12,
   },
-  greeting: {
+  appTitle: {
     color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 24,
+    fontWeight: 'bold',
   },
   userName: {
-    color: '#ffffff',
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginTop: 2,
-  },
-  userEmail: {
-    color: '#ffffff',
+    color: '#d1fae5',
     fontSize: 14,
     marginTop: 2,
-    opacity: 0.8,
   },
   logoutIcon: {
     padding: 8,
@@ -233,100 +303,181 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#000000',
   },
-  content: {
-    padding: 20,
-    marginTop: -20,
-  },
-  cardGrid: {
-    gap: 16,
-  },
-  card: {
-    borderRadius: 16,
-    padding: 20,
+  loginIcon: {
+    padding: 8,
     backgroundColor: '#ffffff',
-    borderWidth: 2,
-    borderColor: '#000000',
-  },
-  statusCard: {
-    borderRadius: 16,
-    padding: 20,
-    backgroundColor: '#10b981',
-    borderWidth: 2,
-    borderColor: '#000000',
-  },
-  actionCard: {
-    borderRadius: 16,
-    padding: 20,
-    backgroundColor: '#ffffff',
-    borderWidth: 2,
-    borderColor: '#000000',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginLeft: 10,
-    color: '#374151',
-  },
-  cardContent: {
-    gap: 8,
-  },
-  infoRow: {
-    marginBottom: 8,
-  },
-  infoLabel: {
-    fontSize: 14,
-    color: '#6b7280',
-    fontWeight: '500',
-  },
-  infoValue: {
-    fontSize: 16,
-    color: '#374151',
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  statusText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  statusSubtext: {
-    color: '#d1fae5',
-    fontSize: 14,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: '#000000',
-    padding: 10,
-    borderRadius: 8,
   },
-  actionButtonText: {
-    color: '#000000',
-    marginLeft: 8,
-    fontWeight: '600',
-  },
-  logoutButton: {
-    marginTop: 30,
-    borderRadius: 16,
-    backgroundColor: '#ef4444',
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: '#000000',
-    flexDirection: 'row',
-    justifyContent: 'center',
+    paddingHorizontal: 12,
+    height: 48,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#374151',
+    outlineStyle: 'none',
+  },
+  clearButton: {
+    padding: 4,
+  },
+  welcomeContainer: {
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  welcomeTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#374151',
+    marginBottom: 4,
+  },
+  welcomeSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  categoriesWrapper: {
+    backgroundColor: '#ffffff',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  categoriesLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+    paddingHorizontal: 20,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  categoriesContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  categoryChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#f3f4f6',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    marginRight: 8,
+    minWidth: 80,
     alignItems: 'center',
+  },
+  categoryChipActive: {
+    backgroundColor: '#10b981',
+    borderColor: '#000000',
+  },
+  categoryChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  categoryChipTextActive: {
+    color: '#ffffff',
+  },
+  productList: {
     padding: 16,
   },
-  logoutButtonText: {
-    color: '#fff',
-    fontSize: 16,
+  productRow: {
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  productCard: {
+    width: (width - 48) / 2,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#000000',
+    overflow: 'hidden',
+  },
+  productImageContainer: {
+    width: '100%',
+    height: 140,
+    backgroundColor: '#f3f4f6',
+  },
+  productImage: {
+    width: '100%',
+    height: '100%',
+  },
+  productImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  productInfo: {
+    padding: 12,
+  },
+  productBrand: {
+    fontSize: 11,
+    color: '#6b7280',
+    textTransform: 'uppercase',
     fontWeight: '600',
-    marginLeft: 8,
+    marginBottom: 4,
+  },
+  productName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 4,
+  },
+  productDescription: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginBottom: 8,
+  },
+  productPrice: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#10b981',
+    marginBottom: 8,
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#10b981',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#000000',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  addButtonDisabled: {
+    opacity: 0.7,
+  },
+  addButtonText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#6b7280',
+    marginTop: 16,
+    textAlign: 'center',
   },
 });

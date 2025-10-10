@@ -133,12 +133,27 @@ export default function LoginScreen() {
                 </>
               )}
             </TouchableOpacity>
+
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>o</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <TouchableOpacity
+              style={styles.browseButton}
+              onPress={() => router.replace('/(tabs)')}
+            >
+              <Ionicons name="storefront-outline" size={20} color="#10b981" />
+              <Text style={styles.browseButtonText}>Ver productos</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              Sistema de Gestión Farmacéutica
-            </Text>
+            <Text style={styles.footerText}>¿No tienes cuenta? </Text>
+            <TouchableOpacity onPress={() => router.push('/register')}>
+              <Text style={styles.footerLink}>Regístrate</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -259,12 +274,52 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 8,
   },
-  footer: {
+  divider: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginVertical: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#e5e7eb',
+  },
+  dividerText: {
+    marginHorizontal: 16,
+    fontSize: 14,
+    color: '#9ca3af',
+    fontWeight: '500',
+  },
+  browseButton: {
+    borderRadius: 15,
+    backgroundColor: '#ffffff',
+    borderWidth: 2,
+    borderColor: '#10b981',
+    height: 55,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  browseButtonText: {
+    color: '#10b981',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
   },
   footerText: {
     fontSize: 14,
     color: '#6b7280',
-    textAlign: 'center',
+  },
+  footerLink: {
+    fontSize: 14,
+    color: '#10b981',
+    fontWeight: '600',
   },
 });
