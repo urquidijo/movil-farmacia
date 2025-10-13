@@ -197,6 +197,52 @@ export const carritoAPI = {
   },
 };
 
+// Interfaces de pagos y facturas
+export interface Pago {
+  ordenId: number;
+  monto: number;
+  moneda: string;
+}
+
+export interface PagoResponse {
+  url: string;
+}
+
+export interface Factura {
+  id: number;
+  monto: number;
+  estado: string;
+  facturaUrl: string | null;
+  createdAt: string;
+  orden: {
+    id: number;
+    total: number;
+    user: {
+      firstName: string;
+      lastName: string;
+      email: string;
+    };
+  };
+}
+
+// Servicios de pagos
+export const pagosAPI = {
+  crear: async (pago: Pago): Promise<PagoResponse> => {
+    const response = await api.post('/api/pagos/crear', pago);
+    return response.data;
+  },
+
+  getFacturas: async (): Promise<Factura[]> => {
+    const response = await api.get('/api/pagos/facturas');
+    return response.data;
+  },
+
+  getFactura: async (id: number): Promise<Factura> => {
+    const response = await api.get(`/api/pagos/factura/${id}`);
+    return response.data;
+  },
+};
+
 // Funciones de storage
 export const storage = {
   saveToken: async (token: string) => {

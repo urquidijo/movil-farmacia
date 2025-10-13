@@ -30,6 +30,19 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <Ionicons name="cart" size={28} color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="invoices"
+        options={{
+          title: 'Facturas',
+          tabBarIcon: ({ color }) => <Ionicons name="receipt" size={28} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="cart"
+        options={{
+          href: null, // Ocultar el nuevo cart
+        }}
+      />
     </Tabs>
   );
 }

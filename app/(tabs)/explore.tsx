@@ -3,9 +3,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import * as WebBrowser from 'expo-web-browser';
 
 import { useAuth } from '../../contexts/AuthContext';
-import { carritoAPI, CarritoItem } from '../../services/api';
+import { carritoAPI, pagosAPI, CarritoItem } from '../../services/api';
 
 export default function CarritoScreen() {
   const { isAuthenticated, logout, isLoading: authLoading } = useAuth();
@@ -121,36 +122,59 @@ export default function CarritoScreen() {
 
   const handleCheckout = async () => {
     if (items.length === 0) {
-      Alert.alert('Carrito vacío', 'Agrega productos antes de finalizar la compra');
+      Alert.alert('Carrito vacío', 'Agrega productos antes de procesar la compra');
       return;
     }
 
     Alert.alert(
-      'Finalizar compra',
-      `Total: Bs. ${calculateTotal().toFixed(2)}\n¿Deseas crear la orden?`,
+      'Procesar compra',
+      `Total a pagar: Bs. ${calculateTotal().toFixed(2)}`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Confirmar',
+          text: 'Pagar',
           onPress: async () => {
             setIsCheckingOut(true);
             try {
+              // 1. Crear orden desde el carrito
               const orden = await carritoAPI.checkout();
+              console.log('✅ Orden creada:', orden.id);
+
+              // 2. Crear sesión de pago con Stripe
+              const pagoResponse = await pagosAPI.crear({
+                ordenId: orden.id,
+                monto: orden.total,
+                moneda: 'usd',
+              });
+
+              console.log('✅ Sesión de pago creada:', pagoResponse.url);
+
+              // 3. Abrir navegador para pagar
+              if (pagoResponse.url) {
+                const result = await WebBrowser.openBrowserAsync(pagoResponse.url, {
+                  dismissButtonStyle: 'close',
+                  presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+                });
+
+                // Cuando el usuario cierre el navegador, recargar el carrito
+                if (result.type === 'cancel' || result.type === 'dismiss') {
+                  setTimeout(() => {
+                    loadCarrito();
+                  }, 2000);
+
+                  Alert.alert(
+                    'Proceso de pago',
+                    'Puedes revisar tus facturas en la pestaña de Facturas',
+                    [{ text: 'OK' }]
+                  );
+                }
+              }
+            } catch (error: any) {
+              console.error('Error en checkout:', error);
               Alert.alert(
-                '¡Orden creada!',
-                `Orden #${orden.id} creada exitosamente\nTotal: Bs. ${orden.total.toFixed(2)}`,
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => {
-                      setItems([]);
-                    },
-                  },
-                ]
+                'Error',
+                error.response?.data?.message || 'No se pudo procesar la compra'
               );
-            } catch (error) {
-              console.error('Error creating order:', error);
-              Alert.alert('Error', 'No se pudo crear la orden');
             } finally {
               setIsCheckingOut(false);
             }
@@ -317,8 +341,8 @@ export default function CarritoScreen() {
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <>
-                  <Ionicons name="checkmark-circle-outline" size={22} color="#fff" />
-                  <Text style={styles.checkoutButtonText}>Finalizar compra</Text>
+                  <Ionicons name="card-outline" size={22} color="#fff" />
+                  <Text style={styles.checkoutButtonText}>Procesar compra</Text>
                 </>
               )}
             </TouchableOpacity>
