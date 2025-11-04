@@ -15,9 +15,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
+import * as ImagePicker from 'expo-image-picker';
 
 import { useAuth } from '../../contexts/AuthContext';
-import { carritoAPI, pagosAPI, CarritoItem } from '../../services/api';
+import {
+  carritoAPI,
+  pagosAPI,
+  rxAPI,
+  CarritoItem,
+  RxEstado,
+  VerifyResponse,
+  VerifyMissing,
+} from '../../services/api';
 
 export default function CartScreen() {
   const { isAuthenticated, user } = useAuth();
@@ -26,6 +35,14 @@ export default function CartScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [updatingItem, setUpdatingItem] = useState<number | null>(null);
+
+  // Estados de receta médica
+  const [needsRx, setNeedsRx] = useState(false);
+  const [rxImage, setRxImage] = useState<string | null>(null);
+  const [rxUploading, setRxUploading] = useState(false);
+  const [rxAnalyzing, setRxAnalyzing] = useState(false);
+  const [rxEstado, setRxEstado] = useState<RxEstado>(null);
+  const [verificationId, setVerificationId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -46,7 +63,16 @@ export default function CartScreen() {
     try {
       setIsLoading(true);
       const data = await carritoAPI.get();
+      console.log('📦 Carrito items:', JSON.stringify(data, null, 2));
       setItems(data);
+
+      // Verificar si algún producto requiere receta (respaldo frontend)
+      const needsFront = data.some((x) => x.producto.requiereReceta === true);
+      console.log('🔍 Necesita receta (frontend):', needsFront);
+      setNeedsRx(needsFront);
+
+      // Verificación backend
+      await checkNeedsRx();
     } catch (error) {
       console.error('Error loading cart:', error);
       Alert.alert('Error', 'No se pudo cargar el carrito');
@@ -59,6 +85,23 @@ export default function CartScreen() {
   const onRefresh = () => {
     setIsRefreshing(true);
     loadCarrito();
+  };
+
+  const checkNeedsRx = async () => {
+    try {
+      console.log('🔍 Verificando necesidad de receta con backend...');
+      const data = await rxAPI.needs();
+      console.log('✅ Respuesta backend needsRx:', data);
+      setNeedsRx(Boolean(data?.needsRx));
+      console.log('📝 Estado needsRx actualizado a:', Boolean(data?.needsRx));
+      if (!data?.needsRx) {
+        setRxEstado(null);
+        setVerificationId(null);
+        setRxImage(null);
+      }
+    } catch (error) {
+      console.warn('⚠️ No se pudo verificar needsRx (usando front):', error);
+    }
   };
 
   const updateCantidad = async (itemId: number, newCantidad: number) => {
@@ -74,6 +117,11 @@ export default function CartScreen() {
           item.id === itemId ? { ...item, cantidad: newCantidad } : item
         )
       );
+      await checkNeedsRx();
+      if (needsRx) {
+        setVerificationId(null);
+        setRxEstado(null);
+      }
     } catch (error: any) {
       console.error('Error updating quantity:', error);
       Alert.alert('Error', 'No se pudo actualizar la cantidad');
@@ -104,15 +152,138 @@ export default function CartScreen() {
       await carritoAPI.remove(itemId);
       setItems((prev) => prev.filter((item) => item.id !== itemId));
       Alert.alert('Eliminado', 'Producto quitado del carrito');
+
+      await checkNeedsRx();
+      setVerificationId(null);
+      setRxEstado(null);
     } catch (error) {
       console.error('Error removing item:', error);
       Alert.alert('Error', 'No se pudo eliminar el producto');
     }
   };
 
+  const uploadAndVerifyReceta = async (imageUri: string, base64?: string) => {
+    setRxUploading(true);
+    try {
+      setRxImage(imageUri);
+
+      // Construir el data URL con base64
+      let imageBase64 = '';
+      if (base64) {
+        imageBase64 = `data:image/jpeg;base64,${base64}`;
+      } else {
+        Alert.alert('Error', 'No se pudo leer la imagen');
+        return;
+      }
+
+      setRxAnalyzing(true);
+      const data = await rxAPI.verify(imageBase64);
+
+      const { ok, missing = [], verificationId: vId } = data;
+      setVerificationId(vId ?? null);
+      setRxEstado(ok ? 'APROBADA' : 'RECHAZADA');
+
+      if (ok) {
+        Alert.alert(
+          'Receta aprobada',
+          'Coincide con los productos del carrito.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        const faltan = missing.map((m: VerifyMissing) => m.productoNombre).join(', ');
+        Alert.alert(
+          'Receta rechazada',
+          faltan
+            ? `Faltan en receta: ${faltan}`
+            : 'No se pudo validar los productos.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error: any) {
+      console.error('Error uploading/verifying receta:', error);
+      const msg = error.response?.data?.message || 'No se pudo validar la receta';
+      Alert.alert('Error', msg);
+      setRxEstado('RECHAZADA');
+      setVerificationId(null);
+    } finally {
+      setRxAnalyzing(false);
+      setRxUploading(false);
+    }
+  };
+
+  const pickImage = async () => {
+    try {
+      // Pedir permisos
+      const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
+      const { status: libraryStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      // Mostrar opciones
+      Alert.alert(
+        'Subir receta médica',
+        'Selecciona una opción',
+        [
+          {
+            text: 'Tomar foto',
+            onPress: async () => {
+              if (cameraStatus !== 'granted') {
+                Alert.alert('Permiso denegado', 'Se necesita acceso a la cámara');
+                return;
+              }
+              const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                quality: 0.8,
+                base64: true,
+              });
+
+              if (!result.canceled && result.assets[0]) {
+                await uploadAndVerifyReceta(result.assets[0].uri, result.assets[0].base64);
+              }
+            },
+          },
+          {
+            text: 'Elegir de galería',
+            onPress: async () => {
+              if (libraryStatus !== 'granted') {
+                Alert.alert('Permiso denegado', 'Se necesita acceso a la galería');
+                return;
+              }
+              const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                quality: 0.8,
+                base64: true,
+              });
+
+              if (!result.canceled && result.assets[0]) {
+                await uploadAndVerifyReceta(result.assets[0].uri, result.assets[0].base64);
+              }
+            },
+          },
+          {
+            text: 'Cancelar',
+            style: 'cancel',
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'No se pudo seleccionar la imagen');
+    }
+  };
+
   const handleCheckout = async () => {
     if (items.length === 0) {
       Alert.alert('Carrito vacío', 'Agrega productos antes de procesar la compra');
+      return;
+    }
+
+    if (needsRx && rxEstado !== 'APROBADA') {
+      Alert.alert(
+        'Falta receta aprobada',
+        'Sube y valida tu receta para continuar.',
+        [{ text: 'OK' }]
+      );
       return;
     }
 
@@ -126,8 +297,10 @@ export default function CartScreen() {
           onPress: async () => {
             setProcessing(true);
             try {
-              // 1. Crear orden desde el carrito
-              const orden = await carritoAPI.checkout();
+              // 1. Crear orden desde el carrito (con verificationId si se requiere)
+              const orden = await carritoAPI.checkout(
+                needsRx ? verificationId ?? undefined : undefined
+              );
               console.log('✅ Orden creada:', orden.id);
 
               // 2. Crear sesión de pago con Stripe
@@ -196,6 +369,8 @@ export default function CartScreen() {
       </View>
     );
   }
+
+  console.log('🎨 Renderizando carrito. needsRx:', needsRx, 'items:', items.length);
 
   return (
     <View style={styles.container}>
@@ -266,6 +441,12 @@ export default function CartScreen() {
                       <Text style={styles.itemPrice}>
                         Bs. {item.producto.precio.toFixed(2)}
                       </Text>
+                      {item.producto.requiereReceta && (
+                        <View style={styles.rxBadge}>
+                          <Ionicons name="medical" size={10} color="#d97706" />
+                          <Text style={styles.rxBadgeText}>Requiere receta</Text>
+                        </View>
+                      )}
                     </View>
                     <TouchableOpacity
                       onPress={() => removeItem(item.id)}
@@ -302,6 +483,74 @@ export default function CartScreen() {
             )}
           />
 
+          {/* Sección de receta médica */}
+          {needsRx && (
+            <View style={styles.rxContainer}>
+              <View style={styles.rxHeader}>
+                <Ionicons name="alert-circle" size={20} color="#d97706" />
+                <Text style={styles.rxHeaderText}>
+                  Este pedido incluye medicamentos que requieren receta médica
+                </Text>
+              </View>
+
+              <View style={styles.rxContent}>
+                <TouchableOpacity
+                  style={[
+                    styles.rxUploadButton,
+                    (rxUploading || rxAnalyzing) && styles.rxUploadButtonDisabled,
+                  ]}
+                  onPress={pickImage}
+                  disabled={rxUploading || rxAnalyzing}
+                >
+                  <Ionicons
+                    name={rxImage ? 'camera-reverse' : 'camera'}
+                    size={20}
+                    color="#374151"
+                  />
+                  <Text style={styles.rxUploadButtonText}>
+                    {rxUploading
+                      ? 'Subiendo...'
+                      : rxImage
+                      ? 'Cambiar receta'
+                      : 'Subir receta médica'}
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={styles.rxStatus}>
+                  <Text style={styles.rxStatusLabel}>Estado:</Text>
+                  <Text
+                    style={[
+                      styles.rxStatusValue,
+                      rxEstado === 'APROBADA' && styles.rxStatusApproved,
+                      rxEstado === 'RECHAZADA' && styles.rxStatusRejected,
+                    ]}
+                  >
+                    {rxAnalyzing
+                      ? 'Validando...'
+                      : rxEstado || 'PENDIENTE'}
+                  </Text>
+                </View>
+
+                {rxImage && (
+                  <Image
+                    source={{ uri: rxImage }}
+                    style={styles.rxImagePreview}
+                    contentFit="contain"
+                  />
+                )}
+
+                {!rxImage && (
+                  <View style={styles.rxPlaceholder}>
+                    <Ionicons name="document-text-outline" size={40} color="#9ca3af" />
+                    <Text style={styles.rxPlaceholderText}>
+                      Sube una imagen nítida y completa de tu receta
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
           {/* Resumen y botón de pago */}
           <View style={styles.summaryContainer}>
             <View style={styles.summaryRow}>
@@ -318,9 +567,13 @@ export default function CartScreen() {
             </View>
 
             <TouchableOpacity
-              style={[styles.checkoutButton, processing && styles.checkoutButtonDisabled]}
+              style={[
+                styles.checkoutButton,
+                (processing || (needsRx && rxEstado !== 'APROBADA')) &&
+                  styles.checkoutButtonDisabled,
+              ]}
               onPress={handleCheckout}
-              disabled={processing}
+              disabled={processing || (needsRx && rxEstado !== 'APROBADA')}
             >
               {processing ? (
                 <ActivityIndicator color="#fff" size="small" />
@@ -597,5 +850,114 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 12,
     color: '#6b7280',
+  },
+  // Estilos de receta médica
+  rxBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginTop: 6,
+    gap: 4,
+  },
+  rxBadgeText: {
+    fontSize: 10,
+    color: '#d97706',
+    fontWeight: '600',
+  },
+  rxContainer: {
+    backgroundColor: '#fffbeb',
+    borderWidth: 2,
+    borderColor: '#fbbf24',
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  rxHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef3c7',
+    padding: 12,
+    gap: 8,
+  },
+  rxHeaderText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#92400e',
+  },
+  rxContent: {
+    padding: 16,
+  },
+  rxUploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 2,
+    borderColor: '#000000',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+    marginBottom: 12,
+  },
+  rxUploadButtonDisabled: {
+    opacity: 0.6,
+  },
+  rxUploadButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  rxStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  rxStatusLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+    fontWeight: '600',
+  },
+  rxStatusValue: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#6b7280',
+  },
+  rxStatusApproved: {
+    color: '#10b981',
+  },
+  rxStatusRejected: {
+    color: '#ef4444',
+  },
+  rxImagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#000000',
+    backgroundColor: '#f3f4f6',
+  },
+  rxPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    backgroundColor: '#fafafa',
+  },
+  rxPlaceholderText: {
+    fontSize: 12,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginTop: 8,
   },
 });

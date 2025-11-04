@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { authAPI, storage, User, LoginCredentials } from '../services/api';
+import { Platform } from 'react-native';
+import { authAPI, storage, User, LoginCredentials, notificacionesAPI } from '../services/api';
+import { registerForPushNotificationsAsync } from '../services/notificationService';
 
 interface AuthContextType {
   user: User | null;
@@ -68,6 +70,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await storage.saveUser(response.user);
 
       setUser(response.user);
+
+      // Registrar token de notificaciones push (no bloquear el login si falla)
+      registerPushToken().catch((error) => {
+        console.warn('⚠️ No se pudo registrar el token de notificaciones:', error.message);
+      });
     } catch (error) {
       throw error;
     } finally {
@@ -75,10 +82,55 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  /**
+   * Registra el token de notificaciones push en el backend
+   */
+  const registerPushToken = async () => {
+    try {
+      console.log('📱 Registrando token de notificaciones...');
+
+      // Obtener el token de Expo
+      const expoPushToken = await registerForPushNotificationsAsync();
+
+      if (!expoPushToken) {
+        console.log('❌ No se pudo obtener el token de notificaciones (permisos denegados o emulador)');
+        return;
+      }
+
+      // Determinar la plataforma
+      let platform: 'ANDROID' | 'IOS' | 'WEB' = 'ANDROID';
+      if (Platform.OS === 'ios') {
+        platform = 'IOS';
+      } else if (Platform.OS === 'web') {
+        platform = 'WEB';
+      }
+
+      // Registrar en el backend
+      const response = await notificacionesAPI.registerToken({
+        token: expoPushToken,
+        platform,
+      });
+
+      console.log('✅ Token de notificaciones registrado exitosamente:', response.deviceToken.id);
+    } catch (error: any) {
+      console.error('❌ Error registrando token de notificaciones:', error.message);
+      throw error;
+    }
+  };
+
   const logout = async () => {
     try {
       console.log('🚪 Iniciando proceso de logout...');
       setIsLoading(true);
+
+      // Desactivar tokens de notificaciones (no bloquear el logout si falla)
+      try {
+        console.log('🔕 Desactivando tokens de notificaciones...');
+        await notificacionesAPI.deactivateAllTokens();
+        console.log('✅ Tokens de notificaciones desactivados');
+      } catch (notifError) {
+        console.warn('⚠️ Error desactivando tokens de notificaciones:', notifError);
+      }
 
       // Intentar hacer logout en el servidor
       console.log('📡 Enviando logout al servidor...');

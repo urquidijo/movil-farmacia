@@ -243,6 +243,14 @@ export default function HomeScreen() {
           )}
         />
       )}
+
+      {/* Botón flotante para test de notificaciones (temporal para desarrollo) */}
+      <TouchableOpacity
+        style={styles.testNotificationsFAB}
+        onPress={() => router.push('/test-notifications')}
+      >
+        <Ionicons name="notifications" size={24} color="#fff" />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -479,5 +487,23 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginTop: 16,
     textAlign: 'center',
+  },
+  testNotificationsFAB: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FF9500',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    borderWidth: 2,
+    borderColor: '#000',
   },
 });

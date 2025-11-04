@@ -13,7 +13,7 @@ const getBaseURL = () => {
       return 'http://localhost:3001';
     }
 
-    // Para móvil (iOS/Android): SIEMPRE usar el backend desplegado
+    // Para móvil (iOS/Android): usar el backend desplegado en Railway
     return 'https://backend-farmacia-production.up.railway.app';
   }
   // Para producción
@@ -122,6 +122,8 @@ export interface CarritoItem {
     precio: number;
     imageUrl?: string;
     marca: { nombre: string };
+    stockActual: number;
+    requiereReceta?: boolean;
   };
 }
 
@@ -191,8 +193,10 @@ export const carritoAPI = {
     await api.delete('/api/carrito');
   },
 
-  checkout: async (): Promise<any> => {
-    const response = await api.post('/api/carrito/checkout');
+  checkout: async (verificationId?: string): Promise<any> => {
+    const response = await api.post('/api/carrito/checkout', {
+      verificationId: verificationId || undefined,
+    });
     return response.data;
   },
 };
@@ -225,6 +229,46 @@ export interface Factura {
   };
 }
 
+// Interfaces de notificaciones
+export interface RegisterTokenDto {
+  token: string;
+  platform: 'ANDROID' | 'IOS' | 'WEB';
+}
+
+export interface RegisterTokenResponse {
+  message: string;
+  deviceToken: {
+    id: number;
+    platform: string;
+    active: boolean;
+  };
+}
+
+// Interfaces de recetas médicas
+export type RxEstado = 'PENDIENTE' | 'APROBADA' | 'RECHAZADA' | null;
+
+export interface NeedsRxResponse {
+  needsRx: boolean;
+}
+
+export interface VerifyMatched {
+  productoId: number;
+  nombreDetectado: string;
+  score: number;
+}
+
+export interface VerifyMissing {
+  productoId: number;
+  productoNombre: string;
+}
+
+export interface VerifyResponse {
+  ok: boolean;
+  matched: VerifyMatched[];
+  missing: VerifyMissing[];
+  verificationId?: string;
+}
+
 // Servicios de pagos
 export const pagosAPI = {
   crear: async (pago: Pago): Promise<PagoResponse> => {
@@ -240,6 +284,76 @@ export const pagosAPI = {
   getFactura: async (id: number): Promise<Factura> => {
     const response = await api.get(`/api/pagos/factura/${id}`);
     return response.data;
+  },
+};
+
+// Servicios de notificaciones
+export const notificacionesAPI = {
+  registerToken: async (data: RegisterTokenDto): Promise<RegisterTokenResponse> => {
+    const response = await api.post('/api/notificaciones/register-token', data);
+    return response.data;
+  },
+
+  deactivateToken: async (token: string): Promise<void> => {
+    await api.delete(`/api/notificaciones/token/${token}`);
+  },
+
+  deactivateAllTokens: async (): Promise<void> => {
+    await api.post('/api/notificaciones/deactivate-all');
+  },
+
+  sendTestNotification: async (): Promise<any> => {
+    const response = await api.post('/api/notificaciones/test');
+    return response.data;
+  },
+};
+
+// Servicios de recetas médicas
+export const rxAPI = {
+  needs: async (): Promise<NeedsRxResponse> => {
+    try {
+      // Obtener userId del storage
+      const userData = await AsyncStorage.getItem('user');
+      const user = userData ? JSON.parse(userData) as User : null;
+      const userId = user?.id || 0;
+
+      console.log('📋 rxAPI.needs - userId:', userId);
+      console.log('📋 rxAPI.needs - Llamando a:', BASE_URL + '/api/rx/needs');
+
+      const response = await api.post('/api/rx/needs', {}, {
+        headers: {
+          'x-user-id': userId.toString(),
+        },
+      });
+      console.log('✅ rxAPI.needs - Respuesta:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ rxAPI.needs - Error:', error.response?.status, error.response?.data);
+      throw error;
+    }
+  },
+
+  verify: async (imageBase64: string): Promise<VerifyResponse> => {
+    try {
+      // Obtener userId del storage
+      const userData = await AsyncStorage.getItem('user');
+      const user = userData ? JSON.parse(userData) as User : null;
+      const userId = user?.id || 0;
+
+      console.log('📋 rxAPI.verify - userId:', userId);
+      console.log('📋 rxAPI.verify - Llamando a:', BASE_URL + '/api/rx/verify');
+
+      const response = await api.post('/api/rx/verify', { imageBase64 }, {
+        headers: {
+          'x-user-id': userId.toString(),
+        },
+      });
+      console.log('✅ rxAPI.verify - Respuesta:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ rxAPI.verify - Error:', error.response?.status, error.response?.data);
+      throw error;
+    }
   },
 };
 

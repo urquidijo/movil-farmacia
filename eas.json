@@ -6,13 +6,24 @@
     "preview": {
       "android": {
         "buildType": "apk"
+      },
+      "node": "20.18.0",
+      "env": {
+        "NODE_OPTIONS": "--max-old-space-size=4096"
       }
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
       },
-      "ios": {}
+      "ios": {},
+      "node": "20.18.0",
+      "env": {
+        "NODE_OPTIONS": "--max-old-space-size=4096"
+      }
     }
+  },
+  "submit": {
+    "production": {}
   }
 }

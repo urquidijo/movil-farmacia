@@ -4,7 +4,7 @@
     "slug": "movil-farmacia",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/appstore.png",
     "scheme": "movilfarmacia",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -20,7 +20,12 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.josuecova.movilfarmacia"
+      "package": "com.josuecova.movilfarmacia",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.VIBRATE"
+      ],
+      "useNextNotificationsApi": true
     },
     "web": {
       "output": "static",
@@ -39,6 +44,14 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/appstore.png",
+          "color": "#ffffff",
+          "sounds": []
+        }
       ]
     ],
     "experiments": {
@@ -54,6 +67,12 @@
       "eas": {
         "projectId": "934098c7-7817-43ed-866a-ccd6f06cebcf"
       }
+    },
+    "notification": {
+      "icon": "./assets/images/appstore.png",
+      "color": "#ffffff",
+      "androidMode": "default",
+      "androidCollapsedTitle": "Farmacia App"
     },
     "developer": {
       "tool": "expo-cli"
